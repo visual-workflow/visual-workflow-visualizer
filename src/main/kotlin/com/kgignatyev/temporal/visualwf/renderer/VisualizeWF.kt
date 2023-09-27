@@ -1,0 +1,87 @@
+package com.kgignatyev.temporal.visualwf.renderer
+
+import com.kgignatyev.temporal.visualwf.api.WFInfo
+import com.kgignatyev.temporal.visualwf.api.WFStateInfo
+
+
+val testUML = """   
+    @startuml
+    scale 600 width
+
+
+
+    [*] -> State1
+    State1 --> State2 : Succeeded
+    State1 --> [*] : Aborted
+    State2 --> State3 : Succeeded
+    State2 --> [*] : Aborted
+    state State3 {
+      state "Accumulate Enough Data\nLong State Name" as long1
+      long1 : Just a test
+      [*] --> long1
+      long1 --> long1 : New Data
+      long1 --> ProcessData : Enough Data
+    }
+    State3 --> State3 : Failed
+    State3 --> [*] : Succeeded / Save Result
+    State3 --> [*] : Aborted
+
+    @enduml
+    
+""".trimIndent()
+
+
+class PlantUMLHelper(
+    val plantumlBaseUrl:String = "http://www.plantuml.com/plantuml/png/",
+    val successColor: String = "#00FF00", val failureColor: String = "#FF0000") {
+
+    fun toPlantUmlPngURL( uml: String, wfInfo: WFInfo): String {
+        val  enhancedUML = enhanceUML(uml, wfInfo)
+        val encoded = textToHex(enhancedUML)
+        return "https://www.plantuml.com/plantuml/png/~h$encoded"
+    }
+
+    fun textToHex(text: String): String {
+        val sb = StringBuilder()
+        for (b in text.toByteArray()) {
+            sb.append(String.format("%02X", b))
+        }
+        return sb.toString()
+    }
+
+    fun enhanceUML(uml: String, wfInfo: WFInfo): String {
+
+        val umlAdditions = StringBuilder()
+        wfInfo.activeStates.forEach {
+            val color = if (it.isError != null && it.isError) failureColor else successColor
+            umlAdditions.append("state ${it.stateName} ${color} \n")
+        }
+        umlAdditions.append("\n")
+        if (wfInfo.legend != null) {
+            umlAdditions.append(
+                """
+                   legend top left
+                   ${wfInfo.legend}
+                   endlegend
+                   
+                   @enduml 
+                """.trimIndent()
+            )
+        }
+        return uml.replace("@enduml", umlAdditions.toString())
+    }
+
+}
+
+
+object VisualizeWF {
+
+    @JvmStatic
+    fun main(args: Array<String>) {
+        val helper = PlantUMLHelper()
+        val testWfInfo = WFInfo().setLegend("a legend")
+            .setActiveStates( listOf( WFStateInfo().setStateName("State1"), WFStateInfo().setStateName("State2").setError(true) ) )
+
+        println(helper.toPlantUmlPngURL(testUML, testWfInfo))
+    }
+}
