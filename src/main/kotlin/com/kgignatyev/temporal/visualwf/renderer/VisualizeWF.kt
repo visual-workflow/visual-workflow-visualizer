@@ -37,11 +37,12 @@ val testUML = """
 
 
 class PlantUMLHelper(
-    val plantumlBaseUrl:String = "http://www.plantuml.com/plantuml/png/",
-    val successColor: String = "#00FF00", val failureColor: String = "#FF0000") {
+    val plantumlBaseUrl: String = "http://www.plantuml.com/plantuml/png/",
+    val successColor: String = "#00FF00", val failureColor: String = "#FF0000"
+) {
 
-    fun toPlantUmlPngURL( uml: String, wfInfo: WFInfo): String {
-        val  enhancedUML = enhanceUML(uml, wfInfo)
+    fun toPlantUmlPngURL(uml: String, wfInfo: WFInfo): String {
+        val enhancedUML = enhanceUML(uml, wfInfo)
         val encoded = textToHex(enhancedUML)
         return "https://www.plantuml.com/plantuml/png/~h$encoded"
     }
@@ -83,13 +84,20 @@ object VisualizeWF {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        val wfId = System.getenv()["WFID"] ?: throw Exception("WFID env variable is not set")
+        val wfId = if (args.isNotEmpty()) {
+            args[0]
+        } else {
+            throw Exception("no workflow id provided as argument")
+        }
         println("WorkflowID = $wfId")
         val om = ObjectMapper()
-        val plantumlQueryResult = runCommand(listOf("temporal", "workflow", "query",
-            "--type","getPlantUMLWorkflowDefinition",
-             "--workflow-id", wfId,
-            ))
+        val plantumlQueryResult = runCommand(
+            listOf(
+                "temporal", "workflow", "query",
+                "--type", "getPlantUMLWorkflowDefinition",
+                "--workflow-id", wfId,
+            )
+        )
         println(plantumlQueryResult)
         //NOTE: this is a hack because 'temporal' not yet supports --raw=true for query command
         val components = plantumlQueryResult.split("\n").toList()
@@ -97,26 +105,29 @@ object VisualizeWF {
         val plantUML_wf_definition = r.get(0).asText()
         println(plantUML_wf_definition)
 
-        val wfStateQueryResult = runCommand(listOf("temporal", "workflow", "query",
-            "--type","getWorkflowInfo",
-            "--workflow-id", wfId,
-        ))
+        val wfStateQueryResult = runCommand(
+            listOf(
+                "temporal", "workflow", "query",
+                "--type", "getWorkflowInfo",
+                "--workflow-id", wfId,
+            )
+        )
         println(wfStateQueryResult)
         val components2 = wfStateQueryResult.split("\n").toList()
         val r2 = om.readTree(components2[1]) as ArrayNode
         println("$r2")
-        val wfStateInfo  = r2.get(0) as ObjectNode
+        val wfStateInfo = r2.get(0) as ObjectNode
         val helper = PlantUMLHelper()
-        val legend = wfStateInfo.get("legend")?.asText()?: ""
+        val legend = wfStateInfo.get("legend")?.asText() ?: ""
         val activeStates = wfStateInfo.get("activeStates") as ArrayNode
         val activeState = activeStates.get(0) as ObjectNode
         val activeStateName = activeState.get("stateName").asText()
-        val isError = activeState.get("isError")?.asBoolean()?: false
+        val isError = activeState.get("isError")?.asBoolean() ?: false
         val wfInfo = WFInfo().setLegend(legend)
-            .setActiveStates( listOf( WFStateInfo().setStateName(activeStateName).setError(isError) ) )
+            .setActiveStates(listOf(WFStateInfo().setStateName(activeStateName).setError(isError)))
         val plantUmlPngURL = helper.toPlantUmlPngURL(plantUML_wf_definition, wfInfo)
         println(plantUmlPngURL)
-        println( runCommand(listOf("python3", "-m", "webbrowser", plantUmlPngURL)))
+        println(runCommand(listOf("python3", "-m", "webbrowser", plantUmlPngURL)))
 
 //        val testWfInfo = WFInfo().setLegend("a legend")
 //            .setActiveStates( listOf( WFStateInfo().setStateName("State1"), WFStateInfo().setStateName("State2").setError(true) ) )
@@ -124,7 +135,7 @@ object VisualizeWF {
     }
 
 
-    fun runCommand(commandComponents:List<String>):String {
+    fun runCommand(commandComponents: List<String>): String {
         val processBuilder = ProcessBuilder()
         processBuilder.command(commandComponents)
         val process: Process = processBuilder.start()
