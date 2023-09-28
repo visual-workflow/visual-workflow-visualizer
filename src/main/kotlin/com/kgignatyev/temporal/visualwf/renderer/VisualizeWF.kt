@@ -1,7 +1,12 @@
 package com.kgignatyev.temporal.visualwf.renderer
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ArrayNode
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.kgignatyev.temporal.visualwf.api.WFInfo
 import com.kgignatyev.temporal.visualwf.api.WFStateInfo
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 
 val testUML = """   
@@ -78,10 +83,55 @@ object VisualizeWF {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        val helper = PlantUMLHelper()
-        val testWfInfo = WFInfo().setLegend("a legend")
-            .setActiveStates( listOf( WFStateInfo().setStateName("State1"), WFStateInfo().setStateName("State2").setError(true) ) )
+        val wfId = System.getenv()["WFID"] ?: throw Exception("WFID env variable is not set")
+        println("WorkflowID = $wfId")
+        val om = ObjectMapper()
+        val plantumlQueryResult = runCommand(listOf("temporal", "workflow", "query",
+            "--type","getPlantUMLWorkflowDefinition",
+             "--workflow-id", wfId,
+            ))
+        println(plantumlQueryResult)
+        //NOTE: this is a hack because 'temporal' not yet supports --raw=true for query command
+        val components = plantumlQueryResult.split("\n").toList()
+        val r = om.readTree(components[1]) as ArrayNode
+        val plantUML_wf_definition = r.get(0).asText()
+        println(plantUML_wf_definition)
 
-        println(helper.toPlantUmlPngURL(testUML, testWfInfo))
+        val wfStateQueryResult = runCommand(listOf("temporal", "workflow", "query",
+            "--type","getWorkflowInfo",
+            "--workflow-id", wfId,
+        ))
+        println(wfStateQueryResult)
+        val components2 = wfStateQueryResult.split("\n").toList()
+        val r2 = om.readTree(components2[1]) as ArrayNode
+        println("$r2")
+        val wfStateInfo  = r2.get(0) as ObjectNode
+        val helper = PlantUMLHelper()
+        val legend = wfStateInfo.get("legend")?.asText()?: ""
+        val activeStates = wfStateInfo.get("activeStates") as ArrayNode
+        val activeState = activeStates.get(0) as ObjectNode
+        val activeStateName = activeState.get("stateName").asText()
+        val isError = activeState.get("isError")?.asBoolean()?: false
+        val wfInfo = WFInfo().setLegend(legend)
+            .setActiveStates( listOf( WFStateInfo().setStateName(activeStateName).setError(isError) ) )
+        val plantUmlPngURL = helper.toPlantUmlPngURL(plantUML_wf_definition, wfInfo)
+        println(plantUmlPngURL)
+        println( runCommand(listOf("python3", "-m", "webbrowser", plantUmlPngURL)))
+
+//        val testWfInfo = WFInfo().setLegend("a legend")
+//            .setActiveStates( listOf( WFStateInfo().setStateName("State1"), WFStateInfo().setStateName("State2").setError(true) ) )
+//        println(helper.toPlantUmlPngURL(testUML, testWfInfo))
+    }
+
+
+    fun runCommand(commandComponents:List<String>):String {
+        val processBuilder = ProcessBuilder()
+        processBuilder.command(commandComponents)
+        val process: Process = processBuilder.start()
+        val reader = BufferedReader(InputStreamReader(process.inputStream))
+        process.waitFor()
+        return reader.readText()
     }
 }
+
+
